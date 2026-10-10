@@ -271,7 +271,23 @@ fn split_tokens(line: &str) -> Result<Vec<&str>, &'static str> {
     Ok(tokens)
 }
 
-/// Reads exactly one integer.
+/// Reads exactly one integer from stdin.
+///
+/// Re-prompts on invalid input until a valid `i64` is entered.
+///
+/// # Panics
+///
+/// Panics on fatal I/O errors: closed stdin, EOF (Ctrl+D), or
+/// a failed write to stdout.
+///
+/// # Examples
+///
+/// ```no_run
+/// use askinput::read_int;
+///
+/// let x = read_int("Enter a number: ");
+/// println!("You entered: {x}");
+/// ```
 #[must_use]
 pub fn read_int(message: &str) -> i64 {
     loop {
@@ -299,9 +315,24 @@ pub fn read_int(message: &str) -> i64 {
     }
 }
 
-/// Reads exactly one floating-point number.
+/// Reads exactly one floating-point number from stdin.
 ///
-/// Only finite `f64` values are accepted.
+/// Only finite `f64` values are accepted. `inf`, `-inf`, and
+/// `NaN` are rejected and the user is re-prompted.
+///
+/// # Panics
+///
+/// Panics on fatal I/O errors: closed stdin, EOF (Ctrl+D), or
+/// a failed write to stdout.
+///
+/// # Examples
+///
+/// ```no_run
+/// use askinput::read_float;
+///
+/// let pi = read_float("Enter pi approximately: ");
+/// println!("You entered: {pi}");
+/// ```
 #[must_use]
 pub fn read_float(message: &str) -> f64 {
     loop {
@@ -346,10 +377,16 @@ pub trait IntsTarget {
 /// Reads multiple integers and returns a tuple whose size
 /// is determined by the variables on the left side.
 ///
+/// # Panics
+///
+/// Panics on fatal I/O errors: closed stdin, EOF (Ctrl+D), or
+/// a failed write to stdout.
+///
 /// # Examples
 ///
 /// ```no_run
-/// # use askinput::read_ints;
+/// use askinput::read_ints;
+///
 /// let (a, b) = read_ints("Enter two integers: ");
 /// let (x, y, z) = read_ints("Enter three integers: ");
 /// ```
@@ -371,10 +408,16 @@ pub trait FloatsTarget {
 /// Reads multiple floating-point numbers and returns a tuple
 /// whose size is determined by the variables on the left side.
 ///
+/// # Panics
+///
+/// Panics on fatal I/O errors: closed stdin, EOF (Ctrl+D), or
+/// a failed write to stdout.
+///
 /// # Examples
 ///
 /// ```no_run
-/// # use askinput::read_floats;
+/// use askinput::read_floats;
+///
 /// let (a, b) = read_floats("Enter two floats: ");
 /// let (x, y, z) = read_floats("Enter three floats: ");
 /// ```
@@ -624,20 +667,28 @@ impl_floats_target! {
     ),
 }
 
-/// Reads a non-empty string.
+/// Reads a non-empty string from stdin.
 ///
-/// User whitespace is preserved. Only the line ending is
-/// removed.
+/// User whitespace inside the string is preserved. Only the
+/// line ending is removed.
 ///
 /// Control characters are rejected — including embedded `\0`,
 /// which in the C world would silently truncate the string at
-/// an unpredictable point.
+/// an unpredictable point. Empty strings (or strings that
+/// contain only whitespace) are rejected and re-prompted.
+///
+/// # Panics
+///
+/// Panics on fatal I/O errors: closed stdin, EOF (Ctrl+D), or
+/// a failed write to stdout.
 ///
 /// # Examples
 ///
 /// ```no_run
-/// # use askinput::read_str;
+/// use askinput::read_str;
+///
 /// let name = read_str("Enter your name: ");
+/// println!("Hello, {name}!");
 /// ```
 #[must_use]
 pub fn read_str(message: &str) -> String {
@@ -650,5 +701,186 @@ pub fn read_str(message: &str) -> String {
         }
 
         return input;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ----- validate_integer_token -----
+
+    #[test]
+    fn int_token_accepts_plain_digits() {
+        assert!(validate_integer_token("0").is_ok());
+        assert!(validate_integer_token("5").is_ok());
+        assert!(validate_integer_token("1234567890").is_ok());
+    }
+
+    #[test]
+    fn int_token_accepts_signs() {
+        assert!(validate_integer_token("+5").is_ok());
+        assert!(validate_integer_token("-5").is_ok());
+        assert!(validate_integer_token("+0").is_ok());
+        assert!(validate_integer_token("-0").is_ok());
+    }
+
+    #[test]
+    fn int_token_rejects_empty() {
+        assert!(validate_integer_token("").is_err());
+    }
+
+    #[test]
+    fn int_token_rejects_lone_sign() {
+        assert!(validate_integer_token("+").is_err());
+        assert!(validate_integer_token("-").is_err());
+    }
+
+    #[test]
+    fn int_token_rejects_non_digits() {
+        assert!(validate_integer_token("abc").is_err());
+        assert!(validate_integer_token("5a").is_err());
+        assert!(validate_integer_token("5.0").is_err());
+        assert!(validate_integer_token("5,0").is_err());
+        assert!(validate_integer_token(" 5").is_err());
+        assert!(validate_integer_token("5 ").is_err());
+    }
+
+    #[test]
+    fn int_token_rejects_too_long() {
+        let long = "1".repeat(MAX_NUMERIC_TOKEN_BYTES + 1);
+        assert!(validate_integer_token(&long).is_err());
+    }
+
+    // ----- validate_float_token -----
+
+    #[test]
+    fn float_token_accepts_simple() {
+        assert!(validate_float_token("0").is_ok());
+        assert!(validate_float_token("3.14").is_ok());
+        assert!(validate_float_token(".5").is_ok());
+        assert!(validate_float_token("5.").is_ok());
+        assert!(validate_float_token("+3.14").is_ok());
+        assert!(validate_float_token("-3.14").is_ok());
+    }
+
+    #[test]
+    fn float_token_accepts_exponents() {
+        assert!(validate_float_token("1e5").is_ok());
+        assert!(validate_float_token("1E5").is_ok());
+        assert!(validate_float_token("1e+5").is_ok());
+        assert!(validate_float_token("1e-5").is_ok());
+        assert!(validate_float_token("3.14e2").is_ok());
+    }
+
+    #[test]
+    fn float_token_rejects_empty() {
+        assert!(validate_float_token("").is_err());
+    }
+
+    #[test]
+    fn float_token_rejects_lone_dot() {
+        assert!(validate_float_token(".").is_err());
+        assert!(validate_float_token("+.").is_err());
+        assert!(validate_float_token("-.").is_err());
+    }
+
+    #[test]
+    fn float_token_rejects_multiple_dots() {
+        assert!(validate_float_token("1.2.3").is_err());
+        assert!(validate_float_token("..").is_err());
+    }
+
+    #[test]
+    fn float_token_rejects_broken_exponents() {
+        assert!(validate_float_token("1e").is_err());
+        assert!(validate_float_token("1e+").is_err());
+        assert!(validate_float_token("e5").is_err());
+        assert!(validate_float_token("1e5e5").is_err());
+    }
+
+    #[test]
+    fn float_token_rejects_inf_and_nan() {
+        assert!(validate_float_token("inf").is_err());
+        assert!(validate_float_token("-inf").is_err());
+        assert!(validate_float_token("NaN").is_err());
+        assert!(validate_float_token("nan").is_err());
+        assert!(validate_float_token("infinity").is_err());
+    }
+
+    #[test]
+    fn float_token_rejects_hex() {
+        assert!(validate_float_token("0x1F").is_err());
+        assert!(validate_float_token("0b101").is_err());
+    }
+
+    #[test]
+    fn float_token_rejects_underscores() {
+        assert!(validate_float_token("1_000").is_err());
+    }
+
+    // ----- is_forbidden_control -----
+
+    #[test]
+    fn control_allows_tab() {
+        assert!(!is_forbidden_control(b'\t'));
+    }
+
+    #[test]
+    fn control_allows_printable_ascii() {
+        assert!(!is_forbidden_control(b'a'));
+        assert!(!is_forbidden_control(b'Z'));
+        assert!(!is_forbidden_control(b'0'));
+        assert!(!is_forbidden_control(b' '));
+        assert!(!is_forbidden_control(b'~'));
+    }
+
+    #[test]
+    fn control_rejects_nul_and_esc() {
+        assert!(is_forbidden_control(b'\0'));
+        assert!(is_forbidden_control(b'\x1b'));
+    }
+
+    #[test]
+    fn control_rejects_newline_and_cr() {
+        assert!(is_forbidden_control(b'\n'));
+        assert!(is_forbidden_control(b'\r'));
+    }
+
+    #[test]
+    fn control_rejects_all_c0_except_tab() {
+        for byte in 0u8..0x20 {
+            if byte == b'\t' {
+                assert!(!is_forbidden_control(byte));
+            } else {
+                assert!(is_forbidden_control(byte));
+            }
+        }
+    }
+
+    // ----- split_tokens -----
+
+    #[test]
+    fn split_handles_simple_input() {
+        let tokens = split_tokens("1 2 3").unwrap();
+        assert_eq!(tokens, vec!["1", "2", "3"]);
+    }
+
+    #[test]
+    fn split_handles_extra_whitespace() {
+        let tokens = split_tokens("  1   2\t3  ").unwrap();
+        assert_eq!(tokens, vec!["1", "2", "3"]);
+    }
+
+    #[test]
+    fn split_handles_empty_input() {
+        let tokens = split_tokens("").unwrap();
+        assert!(tokens.is_empty());
+    }
+
+    #[test]
+    fn split_handles_whitespace_only() {
+        let tokens = split_tokens("   \t  ").unwrap();
+        assert!(tokens.is_empty());
     }
 }
