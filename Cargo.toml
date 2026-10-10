@@ -3,4 +3,12 @@ name = "askinput"
 version = "0.1.0"
 edition = "2024"
 
+description = "Paranoid typed input from stdin for interactive Rust CLI programs"
+license = "MIT OR Apache-2.0"
+readme = "README.md"
+repository = "https://github.com/lostincenturies/askinput"
+keywords = ["stdin", "input", "readline", "cli", "interactive"]
+categories = ["command-line-interface"]
+authors = ["lostincenturies"]
+
 [dependencies]
