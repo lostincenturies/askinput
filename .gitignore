@@ -1,0 +1,17 @@
+# Rust build artifacts
+/target
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Zed
+.zed/
+.zed-state/
+*.zed
+
+# OS
+.DS_Store
+Thumbs.db
